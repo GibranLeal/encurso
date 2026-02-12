@@ -6,13 +6,48 @@ export default function LoginPage() {
   const [password, setPassword] = useState("Admin123*");
 
   async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      toast.success("Listo ✅ (luego conectamos al API)");
-    } catch (err) {
-      toast.error("Falló el login");
+  e.preventDefault();
+
+  try {
+    const resp = await fetch("http://localhost:4000/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      toast.error(data?.message ?? "Credenciales inválidas");
+      return;
     }
+
+    // tu backend regresa { token }
+    localStorage.setItem("encurso_token", data.token);
+
+    // opcional (pero recomendado): traer /me para tener user, módulos y permisos
+    const meResp = await fetch("http://localhost:4000/auth/me", {
+      headers: { Authorization: `Bearer ${data.token}` },
+    });
+
+    const meData = await meResp.json();
+
+    if (!meResp.ok) {
+      toast.error(meData?.message ?? "No se pudo cargar tu sesión");
+      return;
+    }
+
+    localStorage.setItem("encurso_user", JSON.stringify(meData.user));
+    localStorage.setItem("encurso_modules", JSON.stringify(meData.modules));
+    localStorage.setItem("encurso_permissions", JSON.stringify(meData.permissionsEffective));
+
+    toast.success("Bienvenido ✅");
+    window.location.href = "/app";
+  } catch {
+    toast.error("No se pudo conectar al servidor");
   }
+}
+
 
   return (
     <div className="min-h-screen bg-[#fbfaf7]">
