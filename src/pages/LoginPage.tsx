@@ -50,7 +50,7 @@ export default function LoginPage() {
 
 
   return (
-    <div className="min-h-screen bg-[#fbfaf7]">
+    <div className="min-h-screen bg-[#f5f6fa]">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
         {/* LEFT */}
         <div className="flex items-center justify-center px-6 py-12">
