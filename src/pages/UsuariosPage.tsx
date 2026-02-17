@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { MediaLibraryPicker } from "../shared/ui/MediaLibraryPicker";
+import { ImageEditModal } from "../shared/ui/ImageEditModal";
+import { fetchMediaBlobUrl, uploadPrivateImage } from "../features/media/media.api";
 
 /** =========================
- *  Helpers API (igual que tú)
+ *  Helpers API
  *  ========================= */
 function getToken() {
   return localStorage.getItem("encurso_token") || "";
@@ -69,61 +72,71 @@ async function apiDelete(path: string) {
 }
 
 /** =========================
- *  Media (tu backend real)
- *  =========================
- *  - POST   /media/upload      (single, key "file") -> { success, item }
- *  - GET    /media/:id/view    (private, requiere Authorization) -> stream image
- *  - DELETE /media/:id         (lógico) -> { success }
- */
-async function apiUploadMedia(file: File) {
-  const fd = new FormData();
-  fd.append("file", file); // 👈 key EXACTA
-
-  const res = await fetch(`http://localhost:4000/media/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-    },
-    body: fd,
-  });
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Error subiendo media");
-  return data.item as { id: number };
-}
-
-/**
- * Como /media/:id/view es PRIVADO, <img src="..."> no manda headers.
- * Entonces bajamos como blob con Authorization y creamos un ObjectURL.
- */
-async function fetchMediaBlobUrl(mediaId: number) {
-  const res = await fetch(`http://localhost:4000/media/${mediaId}/view`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error("No se pudo cargar la imagen");
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
-}
+ *  Types
+ *  ========================= */
+type Rol = {
+  id: number;
+  nombre: string;
+  activo: number;
+};
 
 type Usuario = {
   id: number;
   nombre: string;
+  apellido_paterno?: string | null;
+  apellido_materno?: string | null;
   email: string;
   activo: number;
   creado_en?: string;
-
-  // Media
   foto_media_id?: number | null;
+
+  // ✅ rol viene desde JOIN con pivote
+  rol_id?: number | null;
+
+  // ✅ dirección
+  cp?: string | null;
+  estado?: string | null;
+  municipio?: string | null;
+  colonia?: string | null;
+  calle?: string | null;
+  numero?: string | null;
+};
+
+type AddressLookup = {
+  estados: string[];
+  municipios: string[];
+  colonias: string[];
 };
 
 export function UsuariosPage() {
-  // Media (id + preview)
+  // Modal editar imagen
+  const [editOpen, setEditOpen] = useState(false);
+
+  // Media seleccionado (solo id) + preview
   const [fotoMediaId, setFotoMediaId] = useState<number | null>(null);
   const [fotoPreviewUrl, setFotoPreviewUrl] = useState<string>("");
-  const [uploadingFoto, setUploadingFoto] = useState(false);
 
-  // Cache de previews por id para la tabla (evita refetch a cada render)
+  // Cache avatar para tabla: mediaId -> blobUrl
   const [avatarCache, setAvatarCache] = useState<Record<number, string>>({});
+
+  // ✅ roles
+  const [roles, setRoles] = useState<Rol[]>([]);
+  const [rolId, setRolId] = useState<number | "">("");
+
+  // ✅ address lookup por CP
+  const [cp, setCp] = useState("");
+  const [estado, setEstado] = useState("");
+  const [municipio, setMunicipio] = useState("");
+  const [colonia, setColonia] = useState("");
+  const [calle, setCalle] = useState("");
+  const [numero, setNumero] = useState("");
+
+  const [addrOptions, setAddrOptions] = useState<AddressLookup>({
+    estados: [],
+    municipios: [],
+    colonias: [],
+  });
+  const [addrLoading, setAddrLoading] = useState(false);
 
   const [items, setItems] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,154 +146,261 @@ export function UsuariosPage() {
   const isEditing = editingId !== null;
 
   const [nombre, setNombre] = useState("");
+  const [apellidoPaterno, setApellidoPaterno] = useState("");
+  const [apellidoMaterno, setApellidoMaterno] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  async function load() {
+  async function loadUsers() {
     setLoading(true);
     try {
-      const data = await apiGet("/users");
+      const data = await apiGet("/api/users");
       setItems(data.items || []);
     } finally {
       setLoading(false);
     }
   }
 
+  async function loadRoles() {
+    try {
+      const data = await apiGet("/api/roles");
+      setRoles(data.items || []);
+    } catch {
+      setRoles([]);
+    }
+  }
+
   useEffect(() => {
-    load();
+    loadUsers();
+    loadRoles();
   }, []);
 
-  // Cuando llegue lista, precarga (suave) avatars de los que tengan foto_media_id
+  /**
+   * ✅ warm cache avatars
+   */
   useEffect(() => {
     let cancelled = false;
 
     async function warm() {
       const ids = Array.from(
-        new Set(items.map((u) => u.foto_media_id).filter((x): x is number => typeof x === "number"))
+        new Set(
+          items
+            .map((u) => u.foto_media_id)
+            .filter((x): x is number => typeof x === "number")
+        )
       );
 
       for (const id of ids) {
         if (cancelled) break;
         if (avatarCache[id]) continue;
+
         try {
           const url = await fetchMediaBlobUrl(id);
           if (cancelled) break;
           setAvatarCache((prev) => ({ ...prev, [id]: url }));
         } catch {
-          // si falla, no pasa nada
+          // ignore
         }
       }
     }
 
     if (items.length) warm();
-
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [items, avatarCache]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return items;
-    return items.filter((u) =>
-      [u.nombre, u.email, String(u.id)].some((x) =>
+
+    return items.filter((u) => {
+      const fullName = [
+        u.nombre,
+        u.apellido_paterno || "",
+        u.apellido_materno || "",
+      ]
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      return [fullName, u.email, String(u.id)].some((x) =>
         String(x).toLowerCase().includes(s)
-      )
-    );
+      );
+    });
   }, [q, items]);
 
-  function clearFotoLocalPreview() {
-    if (fotoPreviewUrl?.startsWith("blob:")) {
-      try { URL.revokeObjectURL(fotoPreviewUrl); } catch {}
+  /**
+   * ✅ revoca preview solo si no depende de cache
+   */
+  function clearPreview() {
+    if (fotoPreviewUrl?.startsWith("blob:") && fotoMediaId === null) {
+      try {
+        URL.revokeObjectURL(fotoPreviewUrl);
+      } catch {}
     }
     setFotoPreviewUrl("");
   }
 
+  function resetAddress() {
+    setCp("");
+    setEstado("");
+    setMunicipio("");
+    setColonia("");
+    setCalle("");
+    setNumero("");
+    setAddrOptions({ estados: [], municipios: [], colonias: [] });
+  }
+
   function resetForm() {
     setEditingId(null);
+
     setNombre("");
+    setApellidoPaterno("");
+    setApellidoMaterno("");
     setEmail("");
     setPassword("");
 
+    setRolId("");
+
+    resetAddress();
+
     setFotoMediaId(null);
-    clearFotoLocalPreview();
+    clearPreview();
+  }
+
+  async function onSelectFoto(id: number | null) {
+    setFotoMediaId(id);
+    clearPreview();
+
+    if (!id) return;
+
+    const cached = avatarCache[id];
+    if (cached) {
+      setFotoPreviewUrl(cached);
+      return;
+    }
+
+    try {
+      const url = await fetchMediaBlobUrl(id);
+      setAvatarCache((prev) => ({ ...prev, [id]: url }));
+      setFotoPreviewUrl(url);
+    } catch {
+      setFotoPreviewUrl("");
+    }
   }
 
   async function startEdit(u: Usuario) {
     setEditingId(u.id);
-    setNombre(u.nombre);
-    setEmail(u.email);
+
+    setNombre(u.nombre || "");
+    setApellidoPaterno(u.apellido_paterno || "");
+    setApellidoMaterno(u.apellido_materno || "");
+    setEmail(u.email || "");
     setPassword("");
 
-    setFotoMediaId(u.foto_media_id ?? null);
+    setRolId(typeof u.rol_id === "number" ? u.rol_id : "");
 
-    // Preview: si tenemos cache, úsala; si no, baja blob con auth
-    clearFotoLocalPreview();
-    if (u.foto_media_id) {
-      const cached = avatarCache[u.foto_media_id];
-      if (cached) {
-        setFotoPreviewUrl(cached);
-      } else {
-        try {
-          const url = await fetchMediaBlobUrl(u.foto_media_id);
-          setAvatarCache((prev) => ({ ...prev, [u.foto_media_id as number]: url }));
-          setFotoPreviewUrl(url);
-        } catch {
-          setFotoPreviewUrl("");
-        }
+    // dirección
+    setCp(u.cp || "");
+    setEstado(u.estado || "");
+    setMunicipio(u.municipio || "");
+    setColonia(u.colonia || "");
+    setCalle(u.calle || "");
+    setNumero(u.numero || "");
+
+    // si ya trae cp, precarga combos
+    if ((u.cp || "").trim().length >= 4) {
+      try {
+        setAddrLoading(true);
+        const data = await apiGet(`/api/address/cp/${encodeURIComponent(u.cp || "")}`);
+        setAddrOptions({
+          estados: data.estados || [],
+          municipios: data.municipios || [],
+          colonias: data.colonias || [],
+        });
+
+        // si el back te regresa defaults, los puedes setear aquí
+      } catch {
+        setAddrOptions({ estados: [], municipios: [], colonias: [] });
+      } finally {
+        setAddrLoading(false);
       }
+    } else {
+      setAddrOptions({ estados: [], municipios: [], colonias: [] });
     }
+
+    await onSelectFoto(u.foto_media_id ?? null);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function onPickFoto(file: File | null) {
-    if (!file) return;
+  /**
+   * ✅ CP lookup (debounce)
+   */
+  useEffect(() => {
+    let t: any;
 
-    // preview inmediato local
-    clearFotoLocalPreview();
-    const localUrl = URL.createObjectURL(file);
-    setFotoPreviewUrl(localUrl);
+    const clean = cp.replace(/\D/g, "").slice(0, 5);
+    if (clean !== cp) setCp(clean);
 
-    setUploadingFoto(true);
-    try {
-      const up = await apiUploadMedia(file); // POST /media/upload
-      setFotoMediaId(up.id);
-
-      // también guardamos cache para que la tabla lo muestre sin pedirlo de nuevo
-      try {
-        const blobUrl = await fetchMediaBlobUrl(up.id);
-        setAvatarCache((prev) => ({ ...prev, [up.id]: blobUrl }));
-        setFotoPreviewUrl(blobUrl);
-      } catch {
-        // si falla, dejamos el local preview
-      }
-    } catch (e: any) {
-      alert(e?.message || "Error subiendo foto");
-      setFotoMediaId(null);
-      clearFotoLocalPreview();
-    } finally {
-      setUploadingFoto(false);
+    if (clean.length !== 5) {
+      setAddrOptions({ estados: [], municipios: [], colonias: [] });
+      // no borramos estado/municipio/colonia automáticamente para no “frustrar”
+      return;
     }
-  }
 
-  function removeFoto() {
-    setFotoMediaId(null);
-    clearFotoLocalPreview();
-  }
+    t = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const data = await apiGet(`/api/address/cp/${encodeURIComponent(clean)}`);
+        setAddrOptions({
+          estados: data.estados || [],
+          municipios: data.municipios || [],
+          colonias: data.colonias || [],
+        });
+
+        // ✅ si solo viene 1 opción, autoselecciona
+        if ((data.estados || []).length === 1) setEstado(data.estados[0]);
+        if ((data.municipios || []).length === 1) setMunicipio(data.municipios[0]);
+        if ((data.colonias || []).length === 1) setColonia(data.colonias[0]);
+      } catch {
+        setAddrOptions({ estados: [], municipios: [], colonias: [] });
+      } finally {
+        setAddrLoading(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(t);
+  }, [cp]);
 
   async function submit() {
     const payload: any = {
       nombre: nombre.trim(),
+      apellido_paterno: apellidoPaterno.trim(),
+      apellido_materno: apellidoMaterno.trim(),
       email: email.trim(),
-      foto_media_id: fotoMediaId, // 👈 aquí se liga al usuario
+      foto_media_id: fotoMediaId,
+
+      // ✅ rol (pivote)
+      rol_id: rolId === "" ? null : Number(rolId),
+
+      // ✅ dirección
+      cp: cp.trim() || null,
+      estado: estado.trim() || null,
+      municipio: municipio.trim() || null,
+      colonia: colonia.trim() || null,
+      calle: calle.trim() || null,
+      numero: numero.trim() || null,
     };
 
-    if (!payload.nombre || !payload.email) {
-      alert("Nombre y email son obligatorios.");
+    if (!payload.nombre || !payload.apellido_paterno || !payload.email) {
+      alert("Nombre, Apellido paterno y email son obligatorios.");
       return;
     }
+
+    // rol requerido? (si quieres forzarlo, descomenta)
+    // if (!payload.rol_id) { alert("Selecciona un rol."); return; }
 
     if (!isEditing) {
       if (!password || password.length < 6) {
@@ -288,31 +408,37 @@ export function UsuariosPage() {
         return;
       }
       payload.password = password;
-      await apiPost("/users", payload);
+      await apiPost("/api/users", payload);
     } else {
-      payload.password = password; // opcional
-      await apiPut(`/users/${editingId}`, payload);
+      if (password && password.trim().length > 0) payload.password = password;
+      await apiPut(`/api/users/${editingId}`, payload);
     }
 
     resetForm();
-    await load();
+    await loadUsers();
   }
 
   async function toggleActivo(u: Usuario) {
     const next = u.activo === 1 ? 0 : 1;
-    await apiPatch(`/users/${u.id}/active`, { activo: next });
-    await load();
+    await apiDelete(`/api/users/${u.id}`);
+    await loadUsers();
   }
 
   async function borrarLogico(u: Usuario) {
     const ok = confirm(
-      `¿Seguro que quieres borrar "${u.nombre}"?\n\nEsto es borrado lógico: se ocultará del sistema pero quedará en la base de datos.`
+      `¿Seguro que quieres borrar "${u.nombre} ${u.apellido_paterno || ""}"?\n\nBorrado lógico: se ocultará, pero queda en BD.`
     );
     if (!ok) return;
 
-    await apiDelete(`/users/${u.id}`);
-    await load();
+    await apiDelete(`/api/users/${u.id}`);
+    await loadUsers();
   }
+
+  const roleName = (id?: number | null) => {
+    if (!id) return "—";
+    const r = roles.find((x) => x.id === id);
+    return r?.nombre || `Rol #${id}`;
+  };
 
   return (
     <div className="space-y-5">
@@ -361,63 +487,97 @@ export function UsuariosPage() {
           )}
         </div>
 
-        {/* MEDIA */}
-        <div className="mb-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
-          <div className="flex items-start gap-3">
-            <div className="h-16 w-16 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-              {fotoPreviewUrl ? (
-                <img src={fotoPreviewUrl} alt="Foto" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-neutral-400">
-                  <i className="fa-solid fa-image" />
-                </div>
-              )}
-            </div>
+        {/* FOTO + BIBLIOTECA */}
+        <div className="mb-4 grid grid-cols-1 gap-3 xl:grid-cols-5">
+          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3 xl:col-span-1">
+            <div className="text-xs font-semibold text-neutral-900">Foto seleccionada</div>
 
-            <div className="flex-1">
-              <div className="text-xs font-semibold text-neutral-900">Foto (Media)</div>
-              <div className="mt-1 text-xs text-neutral-600">
-                Se sube con <code className="text-[11px]">POST /media/upload</code> y se asocia por{" "}
-                <code className="text-[11px]">foto_media_id</code>.
+            <div className="mt-2 flex items-center gap-3 xl:flex-col xl:items-stretch">
+              <div className="h-16 w-16 overflow-hidden rounded-2xl border border-neutral-200 bg-white xl:h-24 xl:w-full">
+                {fotoPreviewUrl ? (
+                  <img src={fotoPreviewUrl} alt="Foto" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-neutral-400">
+                    <i className="fa-solid fa-image" />
+                  </div>
+                )}
               </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50">
-                  <i className={`fa-solid ${uploadingFoto ? "fa-spinner fa-spin" : "fa-upload"}`} />
-                  {uploadingFoto ? "Subiendo..." : "Subir foto"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={uploadingFoto}
-                    onChange={(e) => onPickFoto(e.target.files?.[0] || null)}
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={removeFoto}
-                  disabled={!fotoMediaId && !fotoPreviewUrl}
-                  className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  <i className="fa-solid fa-xmark mr-2" />
-                  Quitar
-                </button>
-
-                <div className="ml-auto text-[11px] text-neutral-500">
+              <div className="flex-1 xl:mt-2">
+                <div className="text-xs text-neutral-600">
                   Media ID:{" "}
-                  <span className="font-semibold text-neutral-700">{fotoMediaId ?? "—"}</span>
+                  <span className="font-semibold text-neutral-800">{fotoMediaId ?? "—"}</span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(true)}
+                    disabled={!fotoMediaId || !fotoPreviewUrl}
+                    className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    <i className="fa-solid fa-pen-to-square mr-2" />
+                    Editar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onSelectFoto(null)}
+                    disabled={!fotoMediaId}
+                    className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    <i className="fa-solid fa-xmark mr-2" />
+                    Quitar
+                  </button>
                 </div>
               </div>
             </div>
           </div>
+
+          <div className="xl:col-span-4">
+            <MediaLibraryPicker
+              label="Biblioteca (Media) — clic para asignar"
+              valueMediaId={fotoMediaId}
+              onSelect={onSelectFoto}
+            />
+          </div>
         </div>
 
+        {/* FORM PRINCIPAL */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Field label="Nombre *" value={nombre} onChange={setNombre} placeholder="Ej. Admin" />
+
+          <Field
+            label="Apellido paterno *"
+            value={apellidoPaterno}
+            onChange={setApellidoPaterno}
+            placeholder="Ej. Leal"
+          />
+
+          <Field
+            label="Apellido materno"
+            value={apellidoMaterno}
+            onChange={setApellidoMaterno}
+            placeholder="Ej. Angulo"
+          />
+
           <Field label="Email *" value={email} onChange={setEmail} placeholder="admin@encurso.mx" />
 
-          <div className="xl:col-span-2">
+          {/* ✅ Rol (pivote) */}
+          <SelectField
+            label="Rol *"
+            value={rolId === "" ? "" : String(rolId)}
+            onChange={(v) => setRolId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "Selecciona…" },
+              ...roles
+                .filter((r) => r.activo === 1)
+                .map((r) => ({ value: String(r.id), label: r.nombre })),
+            ]}
+          />
+
+          {/* Password */}
+          <div className="xl:col-span-1">
             <label className="mb-1 block text-xs font-medium text-neutral-700">
               Password {isEditing ? "(opcional)" : "*"}
             </label>
@@ -430,11 +590,79 @@ export function UsuariosPage() {
             />
           </div>
 
-          <div className="md:col-span-2 xl:col-span-2 flex items-end">
+          <div className="md:col-span-2 xl:col-span-6">
+            <div className="mt-2 rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-semibold text-neutral-900">
+                  Dirección (por C.P.)
+                </div>
+                {addrLoading && (
+                  <div className="text-xs text-neutral-500">
+                    <i className="fa-solid fa-spinner fa-spin mr-2" />
+                    Consultando CP…
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+                <Field
+                  label="C.P."
+                  value={cp}
+                  onChange={setCp}
+                  placeholder="Ej. 56100"
+                />
+
+                <SelectField
+                  label="Estado"
+                  value={estado}
+                  onChange={setEstado}
+                  options={[
+                    { value: "", label: addrOptions.estados.length ? "Selecciona…" : "—" },
+                    ...addrOptions.estados.map((x) => ({ value: x, label: x })),
+                  ]}
+                />
+
+                <SelectField
+                  label="Municipio"
+                  value={municipio}
+                  onChange={setMunicipio}
+                  options={[
+                    { value: "", label: addrOptions.municipios.length ? "Selecciona…" : "—" },
+                    ...addrOptions.municipios.map((x) => ({ value: x, label: x })),
+                  ]}
+                />
+
+                <SelectField
+                  label="Colonia"
+                  value={colonia}
+                  onChange={setColonia}
+                  options={[
+                    { value: "", label: addrOptions.colonias.length ? "Selecciona…" : "—" },
+                    ...addrOptions.colonias.map((x) => ({ value: x, label: x })),
+                  ]}
+                />
+
+                <Field
+                  label="Calle"
+                  value={calle}
+                  onChange={setCalle}
+                  placeholder="Ej. Av. Juárez"
+                />
+
+                <Field
+                  label="Número"
+                  value={numero}
+                  onChange={setNumero}
+                  placeholder="Ej. 123"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-6 flex items-end">
             <button
               onClick={submit}
-              disabled={uploadingFoto}
-              className="w-full rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-neutral-800 disabled:opacity-60"
+              className="w-full rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-neutral-800"
             >
               {isEditing ? "Guardar cambios" : "Crear"}
             </button>
@@ -457,6 +685,7 @@ export function UsuariosPage() {
               <tr className="border-b border-neutral-200">
                 <th className="px-4 py-3">Nombre</th>
                 <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Rol</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Acciones</th>
               </tr>
@@ -467,13 +696,26 @@ export function UsuariosPage() {
                 const avatar =
                   typeof u.foto_media_id === "number" ? avatarCache[u.foto_media_id] : "";
 
+                const fullName = [
+                  u.nombre,
+                  u.apellido_paterno || "",
+                  u.apellido_materno || "",
+                ]
+                  .join(" ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+
                 return (
                   <tr key={u.id} className="border-b border-neutral-100">
                     <td className="px-4 py-3 font-medium text-neutral-900">
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 overflow-hidden rounded-xl border border-neutral-200 bg-white">
                           {avatar ? (
-                            <img src={avatar} alt={u.nombre} className="h-full w-full object-cover" />
+                            <img
+                              src={avatar}
+                              alt={fullName || u.nombre}
+                              className="h-full w-full object-cover"
+                            />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-neutral-400">
                               <i className="fa-solid fa-user" />
@@ -482,7 +724,7 @@ export function UsuariosPage() {
                         </div>
 
                         <div>
-                          {u.nombre}
+                          {fullName || u.nombre}
                           <div className="text-[11px] text-neutral-500">
                             ID: {u.id}
                             {typeof u.foto_media_id === "number"
@@ -494,6 +736,10 @@ export function UsuariosPage() {
                     </td>
 
                     <td className="px-4 py-3 text-neutral-700">{u.email}</td>
+
+                    <td className="px-4 py-3 text-neutral-700">
+                      {roleName(u.rol_id ?? null)}
+                    </td>
 
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -536,7 +782,7 @@ export function UsuariosPage() {
 
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={4}>
+                  <td className="px-4 py-8 text-center text-sm text-neutral-500" colSpan={5}>
                     Sin resultados
                   </td>
                 </tr>
@@ -545,10 +791,33 @@ export function UsuariosPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal de edición de imagen */}
+      <ImageEditModal
+        open={editOpen}
+        imageUrl={fotoPreviewUrl}
+        onClose={() => setEditOpen(false)}
+        onApply={async ({ blob }) => {
+          try {
+            const file = new File([blob], `avatar-${Date.now()}.jpg`, {
+              type: "image/jpeg",
+            });
+            const created = await uploadPrivateImage(file);
+            await onSelectFoto(Number(created.id));
+          } catch (e: any) {
+            alert(e?.message || "No se pudo guardar la imagen editada");
+          } finally {
+            setEditOpen(false);
+          }
+        }}
+      />
     </div>
   );
 }
 
+/** =========================
+ *  UI
+ *  ========================= */
 function Field({
   label,
   value,
@@ -569,6 +838,35 @@ function Field({
         placeholder={placeholder}
         className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:ring-4 focus:ring-neutral-200/60"
       />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-neutral-700">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:ring-4 focus:ring-neutral-200/60"
+      >
+        {options.map((o) => (
+          <option key={`${o.value}-${o.label}`} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

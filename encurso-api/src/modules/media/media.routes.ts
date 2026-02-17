@@ -14,12 +14,13 @@ export const mediaRouter = Router();
  */
 mediaRouter.get("/", authRequired, async (req: any, res) => {
   try {
-    const items = await getMediaForUser(req.user.id);
+    const items = await getMediaForUser(req.userId); // ✅
     res.json({ success: true, items });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e.message });
   }
 });
+
 
 /**
  * POST /media/upload (1 archivo)

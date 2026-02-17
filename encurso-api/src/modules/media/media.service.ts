@@ -8,7 +8,7 @@ export async function createMedia(data: {
   original_name: string;
   mime: string;
   size_bytes: number;
-  path: string; // ej: "private/170...-123.png"
+  path: string; // ej: "private/123.png"
 }) {
   const [result]: any = await pool.query(
     `INSERT INTO media (owner_user_id, scope, original_name, mime, size_bytes, path, eliminado)

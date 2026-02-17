@@ -1,84 +1,87 @@
 import { Router } from "express";
-import { z } from "zod";
-import { authRequired, AuthRequest } from "../../middlewares/authRequired";
+import { authRequired } from "../../middlewares/authRequired";
+import { getMeUser } from "./users.service";
+import { getUserById } from "./users.service";
+
+const router = Router();
+
 import {
-  listUsuarios,
-  createUsuario,
-  updateUsuario,
-  setUsuarioActivo,
-  softDeleteUsuario,
-  findUsuarioByEmail,
+  createUser,
+  listUsers,
+  logicalDeleteUser,
+  setUserActive,
+  updateUser,
 } from "./users.service";
+
+
 
 export const usersRouter = Router();
 
-// Todo requiere auth
-usersRouter.use(authRequired);
+usersRouter.get("/me", authRequired, async (req: any, res) => {
+  try {
+    const userId = req.user?.id; // viene del authRequired
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "No autorizado" });
+    }
 
-usersRouter.get("/", async (_req: AuthRequest, res) => {
-  const items = await listUsuarios();
-  return res.json({ items });
-});
-
-const createSchema = z.object({
-  nombre: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(6),
-});
-
-usersRouter.post("/", async (req: AuthRequest, res) => {
-  const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Datos inválidos", errors: parsed.error.flatten() });
+    const item = await getUserById(userId); // vamos a crear esto
+    res.json({ success: true, item });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
   }
-
-  const exists = await findUsuarioByEmail(parsed.data.email);
-  if (exists) return res.status(409).json({ message: "Ese email ya existe" });
-
-  const created = await createUsuario(parsed.data);
-  return res.json({ ok: true, id: created.id });
 });
 
-const updateSchema = z.object({
-  nombre: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(0).optional(), // puede ir vacío para no cambiar
-});
 
-usersRouter.put("/:id", async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ message: "ID inválido" });
-
-  const parsed = updateSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Datos inválidos", errors: parsed.error.flatten() });
+usersRouter.post("/", authRequired, async (req, res) => {
+  try {
+    const out = await createUser(req.body);
+    res.json({ success: true, item: out });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
   }
-
-  await updateUsuario(id, parsed.data);
-  return res.json({ ok: true });
 });
 
-const activeSchema = z.object({
-  activo: z.number().int().min(0).max(1),
-});
-
-usersRouter.patch("/:id/active", async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ message: "ID inválido" });
-
-  const parsed = activeSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Datos inválidos", errors: parsed.error.flatten() });
+usersRouter.put("/:id", authRequired, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const out = await updateUser(id, req.body);
+    res.json({ success: true, item: out });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
   }
-
-  await setUsuarioActivo(id, parsed.data.activo);
-  return res.json({ ok: true });
 });
 
-usersRouter.delete("/:id", async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ message: "ID inválido" });
+usersRouter.patch("/:id/active", authRequired, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const activo = Number(req.body?.activo) ? 1 : 0;
+    const out = await setUserActive(id, activo);
+    res.json({ success: true, item: out });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+});
 
-  await softDeleteUsuario(id);
-  return res.json({ ok: true });
+usersRouter.delete("/:id", authRequired, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const out = await logicalDeleteUser(id);
+    res.json({ success: true, item: out });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+});
+
+usersRouter.get("/me", authRequired, async (req: any, res) => {
+  try {
+    const userId = Number(req.user?.id);
+    if (!userId) return res.status(401).json({ success: false, message: "No autorizado" });
+
+    const item = await getMeUser(userId);
+    if (!item) return res.status(404).json({ success: false, message: "Usuario no encontrado" });
+
+    res.json({ success: true, item });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
 });
