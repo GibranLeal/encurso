@@ -11,11 +11,16 @@ function getUserFromStorage() {
   }
 }
 
-export default function Topbar() {
+type Props = {
+  isMobile?: boolean;
+  onOpenSidebar?: () => void;
+};
+
+export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }: Props) {
   const storedUser = useMemo(() => getUserFromStorage(), []);
 
-  const [me, setMe] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState("");
+  const [me, setMe] = useState<any>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
 
   function logout() {
     localStorage.removeItem("encurso_token");
@@ -52,8 +57,7 @@ export default function Topbar() {
         } else {
           setAvatarUrl("");
         }
-      } catch (e) {
-        // fallback: si falla /me, no rompemos la UI
+      } catch {
         setMe(null);
         setAvatarUrl("");
       }
@@ -79,14 +83,28 @@ export default function Topbar() {
   const email = me?.email ?? storedUser?.email ?? "";
 
   return (
-    <header className="flex items-center justify-between">
-      <div>
-        <div className="text-xs text-neutral-500">Dashboard / Home</div>
-        <div className="text-xl font-semibold tracking-tight text-neutral-900">
-          Home
+    <header className="flex items-center justify-between gap-3">
+      {/* Izquierda: hamburguesa (mobile) + títulos */}
+      <div className="flex items-center gap-3">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            className="grid h-10 w-10 place-items-center rounded-xl border border-neutral-200 bg-white shadow-sm hover:bg-neutral-50"
+            aria-label="Abrir menú"
+            title="Abrir menú"
+          >
+            <i className="fa-solid fa-bars text-neutral-700" />
+          </button>
+        )}
+
+        <div>
+          <div className="text-xs text-neutral-500">Dashboard / Home</div>
+          <div className="text-xl font-semibold tracking-tight text-neutral-900">Home</div>
         </div>
       </div>
 
+      {/* Derecha */}
       <div className="flex items-center gap-3">
         <div className="hidden md:block">
           <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 shadow-sm">
@@ -106,14 +124,9 @@ export default function Topbar() {
         </button>
 
         <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2 shadow-sm">
-          {/* Avatar */}
           <div className="h-9 w-9 overflow-hidden rounded-full border border-neutral-200 bg-neutral-200">
             {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={fullName}
-                className="h-full w-full object-cover"
-              />
+              <img src={avatarUrl} alt={fullName} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-neutral-500">
                 <i className="fa-solid fa-user" />
@@ -121,11 +134,8 @@ export default function Topbar() {
             )}
           </div>
 
-          {/* Nombre + email */}
           <div className="leading-tight">
-            <div className="text-sm font-semibold text-neutral-900">
-              {fullName}
-            </div>
+            <div className="text-sm font-semibold text-neutral-900">{fullName}</div>
             <div className="text-[11px] text-neutral-500">{email}</div>
           </div>
 
