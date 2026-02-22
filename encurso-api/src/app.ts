@@ -1,4 +1,4 @@
-// app.ts / index.ts
+// src/app.ts
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -18,7 +18,7 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// ✅ TODAS LAS APIS DEL DASHBOARD
+// ✅ APIs del dashboard
 app.use("/api", rolesRouter);
 app.use("/api", addressRouter);
 
@@ -26,10 +26,7 @@ app.use("/api/users", usersRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/modules", modulesRouter);
 
-
-
-
-// ✅ auth separado (si así lo quieres)
+// ✅ auth separado
 app.use("/auth", authRouter);
 
 // ✅ uploads estático

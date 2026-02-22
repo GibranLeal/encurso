@@ -8,8 +8,8 @@ async function apiGet(path: string) {
   const res = await fetch(`http://localhost:4000${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Error");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Error HTTP ${res.status}`);
   return data;
 }
 
@@ -22,8 +22,8 @@ async function apiPost(path: string, body: any) {
     },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Error");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Error HTTP ${res.status}`);
   return data;
 }
 
@@ -36,8 +36,8 @@ async function apiPut(path: string, body: any) {
     },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Error");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Error HTTP ${res.status}`);
   return data;
 }
 
@@ -50,8 +50,8 @@ async function apiPatch(path: string, body: any) {
     },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Error");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Error HTTP ${res.status}`);
   return data;
 }
 
@@ -60,8 +60,8 @@ async function apiDelete(path: string) {
     method: "DELETE",
     headers: { Authorization: `Bearer ${getToken()}` },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || "Error");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Error HTTP ${res.status}`);
   return data;
 }
 
@@ -140,49 +140,47 @@ export function ModulosPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
 
-  // ✅ HOOK AQUI ADENTRO (NO AFUERA)
   const [showIcons, setShowIcons] = useState(false);
 
-  // modo edición
   const [editingId, setEditingId] = useState<number | null>(null);
   const isEditing = editingId !== null;
 
-  // form crear/editar
   const [nombre, setNombre] = useState("");
   const [slug, setSlug] = useState("");
   const [ruta, setRuta] = useState("");
-  const [icono, setIcono] = useState<string>(""); // opcional
+  const [icono, setIcono] = useState<string>("");
   const [grupo, setGrupo] = useState("Funciones");
   const [orden, setOrden] = useState(1);
   const [padreId, setPadreId] = useState<number | "">("");
 
   async function refreshMeAndMenu() {
-  const res = await fetch("http://localhost:4000/auth/me", {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
+    const res = await fetch("http://localhost:4000/auth/me", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
 
-  const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
-  if (res.ok) {
-    localStorage.setItem("encurso_user", JSON.stringify(data.user));
-    localStorage.setItem(
-      "encurso_permissions",
-      JSON.stringify(data.permissionsEffective || [])
-    );
-    localStorage.setItem(
-      "encurso_modules",
-      JSON.stringify(data.modules || [])
-    );
-    window.dispatchEvent(new Event("encurso:menu-updated"));
+    if (res.ok) {
+      localStorage.setItem("encurso_user", JSON.stringify(data.user));
+      localStorage.setItem(
+        "encurso_permissions",
+        JSON.stringify(data.permissionsEffective || [])
+      );
+      localStorage.setItem("encurso_modules", JSON.stringify(data.modules || []));
+      window.dispatchEvent(new Event("encurso:menu-updated"));
+    }
   }
-}
-
 
   async function load() {
     setLoading(true);
     try {
-      const data = await apiGet("/modules");
+      // ✅ CORRECTO: tu backend está en /api/modules
+      const data = await apiGet("/api/modules");
       setItems(data.items || []);
+    } catch (e: any) {
+      console.error("Error cargando módulos:", e);
+      alert(e?.message || "Error cargando módulos");
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -241,7 +239,7 @@ export function ModulosPage() {
       icono: icono.trim() === "" ? null : icono.trim(),
       grupo: (grupo || "").trim() === "" ? null : grupo.trim(),
       orden: Number(orden),
-      modulo_padre_id: padreId === "" ? null : Number(padreId),
+      modulo_padre_id: padreId === "" ? null : (Number.isFinite(Number(padreId)) && Number(padreId) > 0 ? Number(padreId) : null),
     };
 
     if (!payload.nombre || !payload.slug || !payload.ruta) {
@@ -249,22 +247,32 @@ export function ModulosPage() {
       return;
     }
 
-    if (isEditing) {
-      await apiPut(`/modules/${editingId}`, payload);
-    } else {
-      await apiPost("/modules", payload);
-    }
+    try {
+      if (isEditing) {
+        await apiPut(`/api/modules/${editingId}`, payload);
+      } else {
+        await apiPost("/api/modules", payload);
+      }
 
-    resetForm();
-    await load();
-    await refreshMeAndMenu();
+      resetForm();
+      await load();
+      await refreshMeAndMenu();
+    } catch (e: any) {
+      console.error("Error guardando módulo:", e);
+      alert(e?.message || "Error guardando módulo");
+    }
   }
 
   async function toggleActivo(m: Modulo) {
-    const next = m.activo === 1 ? 0 : 1;
-    await apiPatch(`/modules/${m.id}/active`, { activo: next });
-    await load();
-    await refreshMeAndMenu();
+    try {
+      const next = m.activo === 1 ? 0 : 1;
+      await apiPatch(`/api/modules/${m.id}/active`, { activo: next });
+      await load();
+      await refreshMeAndMenu();
+    } catch (e: any) {
+      console.error("Error cambiando activo:", e);
+      alert(e?.message || "Error cambiando estado");
+    }
   }
 
   async function borrarLogico(m: Modulo) {
@@ -273,9 +281,14 @@ export function ModulosPage() {
     );
     if (!ok) return;
 
-    await apiDelete(`/modules/${m.id}`);
-    await load();
-    await refreshMeAndMenu();
+    try {
+      await apiDelete(`/api/modules/${m.id}`);
+      await load();
+      await refreshMeAndMenu();
+    } catch (e: any) {
+      console.error("Error borrando módulo:", e);
+      alert(e?.message || "Error borrando módulo");
+    }
   }
 
   return (
@@ -354,7 +367,7 @@ export function ModulosPage() {
             </select>
           </div>
 
-          {/* ICON PICKER (DESPLEGABLE) */}
+          {/* ICON PICKER */}
           <div className="md:col-span-2 xl:col-span-4 relative">
             <label className="mb-1 block text-xs font-medium text-neutral-700">
               Ícono (opcional)

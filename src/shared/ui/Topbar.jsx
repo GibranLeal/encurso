@@ -11,16 +11,11 @@ function getUserFromStorage() {
   }
 }
 
-type Props = {
-  isMobile?: boolean;
-  onOpenSidebar?: () => void;
-};
-
-export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }: Props) {
+export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }) {
   const storedUser = useMemo(() => getUserFromStorage(), []);
 
-  const [me, setMe] = useState<any>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [me, setMe] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   function logout() {
     localStorage.removeItem("encurso_token");
@@ -30,7 +25,7 @@ export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }: P
     window.location.href = "/login";
   }
 
-  // ✅ Cargar usuario real desde backend + avatar privado
+  // Cargar usuario real + avatar privado
   useEffect(() => {
     let cancelled = false;
     let prevUrl = "";
@@ -100,7 +95,9 @@ export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }: P
 
         <div>
           <div className="text-xs text-neutral-500">Dashboard / Home</div>
-          <div className="text-xl font-semibold tracking-tight text-neutral-900">Home</div>
+          <div className="text-xl font-semibold tracking-tight text-neutral-900">
+            Home
+          </div>
         </div>
       </div>
 
@@ -124,9 +121,14 @@ export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }: P
         </button>
 
         <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2 shadow-sm">
+          {/* Avatar */}
           <div className="h-9 w-9 overflow-hidden rounded-full border border-neutral-200 bg-neutral-200">
             {avatarUrl ? (
-              <img src={avatarUrl} alt={fullName} className="h-full w-full object-cover" />
+              <img
+                src={avatarUrl}
+                alt={fullName}
+                className="h-full w-full object-cover"
+              />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-neutral-500">
                 <i className="fa-solid fa-user" />
@@ -134,8 +136,11 @@ export default function Topbar({ isMobile = false, onOpenSidebar = () => {} }: P
             )}
           </div>
 
+          {/* Nombre + email */}
           <div className="leading-tight">
-            <div className="text-sm font-semibold text-neutral-900">{fullName}</div>
+            <div className="text-sm font-semibold text-neutral-900">
+              {fullName}
+            </div>
             <div className="text-[11px] text-neutral-500">{email}</div>
           </div>
 

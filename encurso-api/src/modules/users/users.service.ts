@@ -1,3 +1,4 @@
+// src/modules/users/users.service.ts
 import bcrypt from "bcrypt";
 import { pool } from "../../db/pool";
 
@@ -6,7 +7,7 @@ type UserPayload = {
   apellido_paterno?: string | null;
   apellido_materno?: string | null;
   email: string;
-  password?: string; // create obligatorio, update opcional
+  password?: string;
   telefono?: string | null;
 
   // dirección
@@ -24,10 +25,25 @@ type UserPayload = {
 };
 
 export async function listUsers() {
-  const [rows] = await pool.query(
+  const [rows]: any = await pool.query(
     `
     SELECT 
-      u.*,
+      u.id,
+      u.nombre,
+      u.apellido_paterno,
+      u.apellido_materno,
+      u.email,
+      u.telefono,
+      u.cp,
+      u.estado,
+      u.municipio,
+      u.colonia,
+      u.calle,
+      u.numero,
+      u.foto_media_id,
+      u.activo,
+      u.creado_en,
+      u.actualizado_en,
       ur.rol_id
     FROM usuarios u
     LEFT JOIN usuario_roles ur ON ur.usuario_id = u.id
@@ -43,8 +59,9 @@ export async function createUser(payload: UserPayload) {
 
   if (!nombre) throw new Error("Nombre es obligatorio");
   if (!email) throw new Error("Email es obligatorio");
-  if (!payload.password || payload.password.length < 6)
+  if (!payload.password || payload.password.length < 6) {
     throw new Error("Password mínimo 6 caracteres");
+  }
 
   const password_hash = await bcrypt.hash(payload.password, 10);
 
@@ -78,7 +95,7 @@ export async function createUser(payload: UserPayload) {
 
   const userId = Number(result.insertId);
 
-  // ✅ CAMBIO: guardar rol en usuario_roles (usuario_id, rol_id)
+  // rol en usuario_roles
   if (payload.rol_id) {
     await upsertUserRole(userId, payload.rol_id);
   }
@@ -140,7 +157,7 @@ export async function updateUser(userId: number, payload: UserPayload) {
     ]);
   }
 
-  // ✅ CAMBIO: rol opcional
+  // rol opcional (1 rol por usuario)
   if (payload.rol_id === null) {
     await deleteUserRole(userId);
   } else if (typeof payload.rol_id === "number" && payload.rol_id > 0) {
@@ -161,12 +178,9 @@ export async function logicalDeleteUser(userId: number) {
 }
 
 /** =========================
- *  ✅ usuario_roles helpers
- *  =========================
- *  Tu tabla real: usuario_id + rol_id (sin id)
- */
+ *  usuario_roles helpers
+ *  ========================= */
 export async function upsertUserRole(usuario_id: number, rol_id: number) {
-  // si el usuario solo tendrá 1 rol: borramos y volvemos a insertar
   await pool.query(`DELETE FROM usuario_roles WHERE usuario_id=?`, [usuario_id]);
   await pool.query(`INSERT INTO usuario_roles (usuario_id, rol_id) VALUES (?, ?)`, [
     usuario_id,
@@ -188,6 +202,7 @@ export async function getMeUser(userId: number) {
       u.apellido_materno,
       u.email,
       u.foto_media_id,
+      u.activo,
       ur.rol_id
     FROM usuarios u
     LEFT JOIN usuario_roles ur ON ur.usuario_id = u.id
@@ -209,7 +224,15 @@ export async function getUserById(id: number) {
       u.apellido_paterno,
       u.apellido_materno,
       u.email,
+      u.telefono,
+      u.cp,
+      u.estado,
+      u.municipio,
+      u.colonia,
+      u.calle,
+      u.numero,
       u.foto_media_id,
+      u.activo,
       ur.rol_id
     FROM usuarios u
     LEFT JOIN usuario_roles ur ON ur.usuario_id = u.id
@@ -219,9 +242,6 @@ export async function getUserById(id: number) {
     [id]
   );
 
-  if (!rows.length) {
-    throw new Error("Usuario no encontrado");
-  }
-
+  if (!rows.length) throw new Error("Usuario no encontrado");
   return rows[0];
 }
