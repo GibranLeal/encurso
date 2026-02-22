@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
-/**
- * Lee el menú desde localStorage.
- * Esto lo alimentas desde tu backend (módulos) y lo guardas en "encurso_modules".
- */
 function getModulesFromStorage() {
   try {
     const raw = localStorage.getItem("encurso_modules");
@@ -14,11 +10,6 @@ function getModulesFromStorage() {
   }
 }
 
-/**
- * Normaliza campos que pueden venir con nombres distintos del backend:
- * - id, nombre/label, ruta/path, icono/icon, grupo/group, orden/order, modulo_padre_id/parentId...
- * Esto te permite soportar distintos formatos sin romper el frontend.
- */
 function normalizeModule(m) {
   return {
     id: m.id,
@@ -37,29 +28,20 @@ function normalizeModule(m) {
   };
 }
 
-/**
- * Convierte la lista plana de módulos en un árbol:
- * - Si tiene parentId, se vuelve hijo del padre
- * - Si no tiene parentId, es "root"
- * También ordena por "order".
- */
 function buildTree(modules) {
   const map = new Map();
   const roots = [];
 
-  // 1) Creamos nodos normalizados y los metemos al map por id
   modules.forEach((m) => {
     const n = normalizeModule(m);
     map.set(n.id, n);
   });
 
-  // 2) Conectamos hijos con padres
   for (const n of map.values()) {
     if (n.parentId && map.has(n.parentId)) map.get(n.parentId).children.push(n);
     else roots.push(n);
   }
 
-  // 3) Ordenamos roots e hijos recursivamente por "order"
   const sortRec = (arr) => {
     arr.sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
     arr.forEach((x) => sortRec(x.children));
@@ -69,50 +51,29 @@ function buildTree(modules) {
   return roots;
 }
 
-/**
- * Agrupa módulos por "group" (GENERAL, CONFIGURACIÓN, etc.)
- * Regresa un array tipo: [ ["GENERAL", [items...]], ["CONFIG", [items...]] ]
- */
 function groupBy(items) {
   const groups = new Map();
-
   items.forEach((item) => {
     const g = String(item.group ?? "GENERAL").toUpperCase();
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(item);
   });
-
   return [...groups.entries()];
 }
 
-/**
- * Render simple de FontAwesome.
- * Si no hay icono, ponemos un fallback.
- */
 function IconFA({ icon, className = "" }) {
   const cls = icon ? `fa-solid ${icon}` : "fa-solid fa-circle";
   return <i className={`${cls} text-[14px] ${className}`} />;
 }
 
-/**
- * Determina si una ruta se considera activa.
- * - Dashboard "/app" es exacto
- * - Para el resto: exacto o prefijo (/ruta/*)
- */
 function isPathActive(pathname, path) {
   if (!path || path === "#") return false;
-
   if (path === "/app") return pathname === "/app" || pathname === "/app/";
   return pathname === path || pathname.startsWith(path + "/");
 }
 
-/**
- * Revisa si un nodo tiene algún descendiente activo.
- * Esto se usa para abrir automáticamente el "acordeón" del padre.
- */
 function hasActiveDescendant(node, pathname) {
   if (!node?.children?.length) return false;
-
   for (const c of node.children) {
     const p = c.path ?? "#";
     if (isPathActive(pathname, p)) return true;
@@ -121,45 +82,26 @@ function hasActiveDescendant(node, pathname) {
   return false;
 }
 
-/**
- * Nodo del menú.
- * Puede ser:
- * - "padre": tiene children => renderiza botón + subitems
- * - "hoja": no tiene children => renderiza NavLink
- *
- * Props:
- * - collapsed: si true, solo iconos
- * - level: indentación por jerarquía
- */
 function MenuNode({ node, level = 0, collapsed = false }) {
   const { pathname } = useLocation();
 
   const label = node.label ?? "Módulo";
   const path = node.path ?? "#";
   const icon = node.icon ?? null;
-
   const hasChildren = node.children?.length > 0;
 
-  // Padding por nivel, pero si está colapsado lo reducimos
   const pad = collapsed ? 10 : 14 + level * 12;
-
-  // Saber si algún hijo está activo (para abrir el acordeón)
   const childActive = hasActiveDescendant(node, pathname);
-
-  // Estado local para abrir/cerrar el acordeón del nodo
   const [open, setOpen] = useState(childActive);
 
-  // Si cambia la ruta y un hijo queda activo, abrimos automático
   useEffect(() => {
     if (childActive) setOpen(true);
   }, [childActive]);
 
-  // Si está colapsado, cerramos acordeones para que no se haga largo
   useEffect(() => {
     if (collapsed) setOpen(false);
   }, [collapsed]);
 
-  // ---- PADRE (tiene hijos) ----
   if (hasChildren) {
     return (
       <div>
@@ -176,9 +118,7 @@ function MenuNode({ node, level = 0, collapsed = false }) {
           title={collapsed ? label : undefined}
         >
           <IconFA icon={icon} className="text-neutral-700" />
-
           {!collapsed && <span className="flex-1 truncate">{label}</span>}
-
           {!collapsed && (
             <i
               className={`fa-solid ${
@@ -204,11 +144,10 @@ function MenuNode({ node, level = 0, collapsed = false }) {
     );
   }
 
-  // ---- HOJA (sin hijos) ----
   return (
     <NavLink
       to={path}
-      end={path === "/app"} // Dashboard exacto
+      end={path === "/app"}
       className={({ isActive }) =>
         [
           "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium",
@@ -233,24 +172,14 @@ function MenuNode({ node, level = 0, collapsed = false }) {
   );
 }
 
-/**
- * Sidebar principal
- *
- * Props (las manda DashboardLayout):
- * - collapsed (bool)
- * - onToggleCollapsed (fn)
- * - isMobile (bool)
- * - mobileOpen (bool) -> si el drawer está abierto (mobile)
- * - onCloseMobile (fn) -> para cerrar el drawer (click overlay)
- */
 export default function Sidebar({
   collapsed = false,
   onToggleCollapsed = () => {},
   isMobile = false,
   mobileOpen = false,
+  onOpenMobile = () => {},
   onCloseMobile = () => {},
 }) {
-  // Cargamos módulos desde storage y escuchamos "encurso:menu-updated"
   const [rawModules, setRawModules] = useState(() => getModulesFromStorage());
 
   useEffect(() => {
@@ -259,14 +188,12 @@ export default function Sidebar({
     return () => window.removeEventListener("encurso:menu-updated", onUpdate);
   }, []);
 
-  // Armamos árbol y grupos
   const tree = useMemo(() => buildTree(rawModules), [rawModules]);
   const grouped = useMemo(() => groupBy(tree), [tree]);
 
-  // Estilos de la tarjeta sidebar
   const asideBase = [
-    "relative rounded-2xl border border-neutral-200 bg-white shadow-sm",
-    collapsed ? "p-3 w-20" : "p-4 w-72",
+    "relative rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden",
+    collapsed ? "p-3 w-[80px] min-w-[80px]" : "p-4 w-72 min-w-[288px]",
     "transition-all duration-200",
   ].join(" ");
 
@@ -274,6 +201,19 @@ export default function Sidebar({
   if (isMobile) {
     return (
       <>
+        {/* ✅ Botón flotante propio del Sidebar (NO hamburguesa en Topbar) */}
+        {!mobileOpen && (
+          <button
+            type="button"
+            onClick={onOpenMobile}
+            className="fixed left-6 top-6 z-50 grid h-12 w-12 place-items-center rounded-2xl border border-neutral-200 bg-white shadow-lg hover:bg-neutral-50"
+            aria-label="Abrir menú"
+            title="Abrir menú"
+          >
+            <i className="fa-solid fa-chevron-right text-neutral-700" />
+          </button>
+        )}
+
         {/* Overlay */}
         {mobileOpen && (
           <button
@@ -294,11 +234,22 @@ export default function Sidebar({
             mobileOpen ? "translate-x-0" : "-translate-x-[120%]",
           ].join(" ")}
         >
-          {/* Pestaña para colapsar/expandir */}
+          {/* ✅ Botón cerrar (opcional pero útil) */}
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="absolute right-1 top-3 grid h-9 w-9 place-items-center rounded-xl border border-neutral-200 bg-white shadow-sm hover:bg-neutral-50"
+            aria-label="Cerrar"
+            title="Cerrar"
+          >
+            <i className="fa-solid fa-xmark text-neutral-700" />
+          </button>
+
+          {/* Pestaña para colapsar/expandir (tu botón propio) */}
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="absolute -right-3 top-16 z-10 flex h-10 w-6 items-center justify-center rounded-r-xl border border-neutral-200 bg-white shadow-sm hover:bg-neutral-50"
+            className="absolute -right-1 top-16 z-10 flex h-10 w-6 items-center justify-center rounded-r-xl border border-neutral-200 bg-white shadow-sm hover:bg-neutral-50"
             title={collapsed ? "Expandir menú" : "Colapsar menú"}
             aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
           >
@@ -311,7 +262,7 @@ export default function Sidebar({
           </button>
 
           {/* Branding */}
-          <div className="flex items-center gap-3 px-2 py-2">
+          <div className="flex items-center gap-3 px-2 py-2 pr-10">
             <img
               src="/img/identidad/encurso.png"
               alt="Encurso"
@@ -336,11 +287,7 @@ export default function Sidebar({
 
                 <div className="space-y-1">
                   {items.map((node) => (
-                    <MenuNode
-                      key={node.id}
-                      node={node}
-                      collapsed={collapsed}
-                    />
+                    <MenuNode key={node.id} node={node} collapsed={collapsed} />
                   ))}
                 </div>
               </div>
@@ -351,14 +298,13 @@ export default function Sidebar({
     );
   }
 
-  // ✅ DESKTOP: normal (sin overlay)
+  // ✅ DESKTOP
   return (
-    <aside className={asideBase}>
-      {/* Pestaña para colapsar/expandir */}
+    <aside className={asideBase + " h-full overflow-y-auto"}>
       <button
         type="button"
         onClick={onToggleCollapsed}
-        className="absolute -right-3 top-16 z-10 flex h-10 w-6 items-center justify-center rounded-r-xl border border-neutral-200 bg-white shadow-sm hover:bg-neutral-50"
+        className="absolute -right-1 top-16 z-10 flex h-10 w-6 items-center justify-center  border border-neutral-200 bg-white shadow-sm hover:bg-neutral-50"
         title={collapsed ? "Expandir menú" : "Colapsar menú"}
         aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
       >
@@ -370,7 +316,6 @@ export default function Sidebar({
         />
       </button>
 
-      {/* Branding */}
       <div className="flex items-center gap-3 px-2 py-2">
         <img
           src="/img/identidad/encurso.png"
@@ -384,7 +329,6 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Menú */}
       <div className="mt-4 space-y-6">
         {grouped.map(([groupName, items]) => (
           <div key={groupName}>
@@ -405,3 +349,4 @@ export default function Sidebar({
     </aside>
   );
 }
+
