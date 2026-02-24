@@ -8,8 +8,10 @@ import { modulesRouter } from "./modules/modules/modules.routes";
 import { usersRouter } from "./modules/users/users.routes";
 import { mediaRouter } from "./modules/media/media.routes";
 
-import rolesRouter from "./modules/roles/roles.routes";
+import { rolesRouter } from "./modules/roles/roles.routes";
 import addressRouter from "./modules/address/address.routes";
+import { permisosRouter } from "./modules/permisos/permisos.routes";
+import { planesRouter } from "./modules/planes/planes.routes";
 
 export const app = express();
 
@@ -28,6 +30,8 @@ app.use("/api/modules", modulesRouter);
 
 // ✅ auth separado
 app.use("/auth", authRouter);
-
+app.use("/api/permisos", permisosRouter);
+app.use("/api/planes", planesRouter);
+app.use("/api/roles", rolesRouter);
 // ✅ uploads estático
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));

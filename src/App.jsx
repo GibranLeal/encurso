@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
+import PermisosPage from "./pages/PermisosPage";
 
 function App() {
   const [count, setCount] = useState(0)
@@ -30,5 +31,7 @@ function App() {
     </>
   )
 }
+
+<Route path="/permisos" element={<PermisosPage />} />
 
 export default App
