@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: localhost
--- Tiempo de generación: 20-02-2026 a las 23:44:42
+-- Tiempo de generación: 27-02-2026 a las 23:22:40
 -- Versión del servidor: 10.4.28-MariaDB
 -- Versión de PHP: 8.2.4
 
@@ -106,10 +106,11 @@ INSERT INTO `modulos` (`id`, `nombre`, `slug`, `ruta`, `icono`, `grupo`, `orden`
 (1, 'Dashboard', 'dashboard', '/app', 'fa-message', 'Funciones', 1, 1, 0, NULL, NULL, '2026-02-13 20:25:44'),
 (2, 'Módulos', 'modulos', '/app/modulos', 'fa-layer-group', 'Funciones', 2, 1, 0, NULL, NULL, '2026-02-13 20:25:44'),
 (3, 'Usuarios', 'usuarios', '/app/usuarios', 'fa-users', 'Funciones', 3, 1, 0, NULL, NULL, '2026-02-13 20:25:44'),
-(4, 'Configuración', 'configuracion', '#', 'fa-gear', 'Funciones', 10, 1, 0, NULL, NULL, '2026-02-13 20:25:44'),
-(5, 'Permisos', 'permisos', '/app/permisos', 'fa-key', 'Funciones', 11, 1, 0, 4, NULL, '2026-02-13 20:26:02'),
+(4, 'Configuración', 'configuracion', '/app/configuracion', 'fa-gear', 'Funciones', 10, 1, 0, NULL, NULL, '2026-02-13 20:25:44'),
+(5, 'Permisos', 'permisos', '/app/permisos', 'fa-key', 'Permisos', 11, 1, 0, NULL, NULL, '2026-02-13 20:26:02'),
 (6, 'Prueba', 'prueba', '/app/prueba', 'fa-ticket', 'Funciones', 5, 1, 0, NULL, NULL, '2026-02-13 20:47:24'),
-(7, 'Prueba 2', 'prueba2', '/app/preuab2', 'fa-key', 'Funciones', 15, 1, 1, NULL, NULL, '2026-02-13 23:19:12');
+(7, 'Prueba 2', 'prueba2', '/app/preuab2', 'fa-key', 'Funciones', 15, 1, 1, NULL, NULL, '2026-02-13 23:19:12'),
+(8, 'Planes', 'planes', '/app/permisos', 'fa-shield-halved', 'Permisos', 6, 1, 0, NULL, NULL, '2026-02-23 19:42:54');
 
 -- --------------------------------------------------------
 
@@ -137,7 +138,16 @@ INSERT INTO `permisos` (`id`, `key`, `grupo`, `descripcion`, `activo`, `creado_e
 (4, 'admin.modules', 'Admin', 'Gestionar módulos del dashboard', 1, '2026-02-11 20:53:55'),
 (5, 'events.read', 'Eventos', 'Ver eventos', 1, '2026-02-11 20:53:55'),
 (6, 'events.write', 'Eventos', 'Crear/editar eventos', 1, '2026-02-11 20:53:55'),
-(7, 'participants.read', 'Participantes', 'Ver registros', 1, '2026-02-11 20:53:55');
+(7, 'participants.read', 'Participantes', 'Ver registros', 1, '2026-02-11 20:53:55'),
+(8, 'permisos.view', 'Permisos', 'Ver catálogo de permisos', 1, '2026-02-23 18:07:05'),
+(9, 'permisos.create', 'Permisos', 'Crear permisos', 1, '2026-02-23 18:07:05'),
+(10, 'permisos.update', 'Permisos', 'Editar permisos', 1, '2026-02-23 18:07:05'),
+(11, 'permisos.toggle', 'Permisos', 'Activar/Desactivar permisos', 1, '2026-02-23 18:07:05'),
+(12, 'planes.view', 'Permisos', 'Ver planes', 1, '2026-02-23 18:07:05'),
+(13, 'planes.manage', 'Permisos', 'Administrar planes', 1, '2026-02-23 18:07:05'),
+(14, 'roles.view', 'Permisos', 'Ver roles', 1, '2026-02-23 18:07:05'),
+(15, 'roles.manage', 'Permisos', 'Administrar roles', 1, '2026-02-23 18:07:05'),
+(16, 'accesos.manage', 'Permisos', 'Gestionar matrices de permisos', 1, '2026-02-23 18:07:05');
 
 -- --------------------------------------------------------
 
@@ -210,6 +220,19 @@ INSERT INTO `roles` (`id`, `nombre`, `activo`, `creado_en`) VALUES
 (1, 'ADMIN', 1, '2026-02-11 20:53:55'),
 (2, 'ORGANIZADOR', 1, '2026-02-11 20:53:55'),
 (3, 'PARTICIPANTE', 1, '2026-02-11 20:53:55');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `rol_permisos`
+--
+
+CREATE TABLE `rol_permisos` (
+  `rol_id` bigint(20) UNSIGNED NOT NULL,
+  `permiso_id` bigint(20) UNSIGNED NOT NULL,
+  `permitido` tinyint(1) NOT NULL DEFAULT 0,
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -157178,7 +157201,7 @@ CREATE TABLE `usuarios` (
 --
 
 INSERT INTO `usuarios` (`id`, `nombre`, `apellido_paterno`, `apellido_materno`, `email`, `password_hash`, `foto_media_id`, `foto`, `nickname`, `telefono`, `activo`, `creado_en`, `actualizado_en`, `cp`, `estado`, `municipio`, `colonia`, `calle`, `numero`) VALUES
-(1, 'Gibran', 'Marcial', 'Leal', 'admin@encurso.mx', '$2b$10$AnP9zZ9i7XPzAiHVGmOOZ.XhVlCwCm3LsNgqmANdE6xTn7wUODeyW', 7, NULL, NULL, NULL, 1, '2026-02-11 22:33:47', '2026-02-16 21:24:03', '50090', 'México', 'Toluca', 'Santa Clara', 'Leona Vicario', '303');
+(1, 'Gibran', 'Marcial', 'Leal', 'admin@encurso.mx', '$2b$10$AnP9zZ9i7XPzAiHVGmOOZ.XhVlCwCm3LsNgqmANdE6xTn7wUODeyW', 11, NULL, NULL, NULL, 1, '2026-02-11 22:33:47', '2026-02-23 18:55:41', '50090', 'México', 'Toluca', 'Santa Clara', 'Leona Vicario', '303');
 
 -- --------------------------------------------------------
 
@@ -157277,6 +157300,13 @@ ALTER TABLE `roles`
   ADD UNIQUE KEY `nombre` (`nombre`);
 
 --
+-- Indices de la tabla `rol_permisos`
+--
+ALTER TABLE `rol_permisos`
+  ADD PRIMARY KEY (`rol_id`,`permiso_id`),
+  ADD KEY `fk_rol_permisos_permiso` (`permiso_id`);
+
+--
 -- Indices de la tabla `sepomex_cp`
 --
 ALTER TABLE `sepomex_cp`
@@ -157333,13 +157363,13 @@ ALTER TABLE `media`
 -- AUTO_INCREMENT de la tabla `modulos`
 --
 ALTER TABLE `modulos`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT de la tabla `permisos`
 --
 ALTER TABLE `permisos`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT de la tabla `planes`
@@ -157406,6 +157436,13 @@ ALTER TABLE `plan_permisos`
 --
 ALTER TABLE `registros`
   ADD CONSTRAINT `fk_reg_evento` FOREIGN KEY (`evento_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE;
+
+--
+-- Filtros para la tabla `rol_permisos`
+--
+ALTER TABLE `rol_permisos`
+  ADD CONSTRAINT `fk_rol_permisos_permiso` FOREIGN KEY (`permiso_id`) REFERENCES `permisos` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_rol_permisos_rol` FOREIGN KEY (`rol_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE;
 
 --
 -- Filtros para la tabla `suscripciones`
