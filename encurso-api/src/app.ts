@@ -20,18 +20,13 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// ✅ APIs del dashboard
-app.use("/api", rolesRouter);
-app.use("/api", addressRouter);
 
+app.use("/api", addressRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/modules", modulesRouter);
-
-// ✅ auth separado
 app.use("/auth", authRouter);
 app.use("/api/permisos", permisosRouter);
 app.use("/api/planes", planesRouter);
 app.use("/api/roles", rolesRouter);
-// ✅ uploads estático
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));

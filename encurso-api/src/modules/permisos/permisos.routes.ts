@@ -20,21 +20,19 @@ permisosRouter.get("/", async (req, res) => {
   try {
     const { search, page, limit, activo } = req.query as any;
 
-    const activoParsed =
-      activo === undefined || activo === null || activo === ""
-        ? null
-        : Number(activo);
-
     const data = await listPermisos({
       search,
-      page: Number(page),
-      limit: Number(limit),
-      activo: activoParsed,
+      page,
+      limit,
+      activo,
     });
 
     return res.json({ success: true, ...data });
   } catch (e: any) {
-    return res.status(400).json({ success: false, message: e.message || "Error" });
+    return res.status(400).json({
+      success: false,
+      message: e.message || "Error",
+    });
   }
 });
 

@@ -10,27 +10,36 @@ export type PermisoItem = {
 };
 
 function toInt(v: any, def: number) {
-  const n = parseInt(String(v ?? ""), 10);
+  const n = parseInt(String(v ?? "").trim(), 10);
   return Number.isFinite(n) ? n : def;
 }
 
+function toNullableTinyInt(v: any): 0 | 1 | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = parseInt(String(v).trim(), 10);
+  if (n === 0) return 0;
+  if (n === 1) return 1;
+  return null;
+}
+
 export async function listPermisos(params: {
-  search?: string;
-  page?: number;
-  limit?: number;
-  activo?: number | null; // null = todos
+  search?: any;
+  page?: any;
+  limit?: any;
+  activo?: any;
 }) {
-  const search = (params.search ?? "").trim();
+  const search = String(params.search ?? "").trim();
   const page = Math.max(1, toInt(params.page, 1));
   const limit = Math.min(100, Math.max(1, toInt(params.limit, 10)));
-  const offset = (page - 1) * limit;
+  const offset = Math.max(0, (page - 1) * limit);
+  const activo = toNullableTinyInt(params.activo);
 
   const where: string[] = [];
   const values: any[] = [];
 
-  if (params.activo === 0 || params.activo === 1) {
+  if (activo === 0 || activo === 1) {
     where.push("p.activo = ?");
-    values.push(params.activo);
+    values.push(activo);
   }
 
   if (search) {
@@ -41,12 +50,25 @@ export async function listPermisos(params: {
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
+  console.log("PERMISOS LIST PARAMS:", {
+    raw: params,
+    search,
+    page,
+    limit,
+    offset,
+    activo,
+    where,
+    values,
+    whereSql,
+  });
+
   const [rowsCount] = await pool.query<any[]>(
-    `SELECT COUNT(*) as total
+    `SELECT COUNT(*) AS total
      FROM permisos p
      ${whereSql}`,
     values
   );
+
   const total = rowsCount?.[0]?.total ?? 0;
 
   const [rows] = await pool.query<any[]>(
@@ -72,15 +94,14 @@ export async function createPermiso(input: {
   grupo?: string | null;
   activo?: number;
 }) {
-  const key = (input.key ?? "").trim();
-  const descripcion = (input.descripcion ?? null) ? String(input.descripcion).trim() : null;
-  const grupo = (input.grupo ?? null) ? String(input.grupo).trim() : null;
+  const key = String(input.key ?? "").trim();
+  const descripcion = input.descripcion ? String(input.descripcion).trim() : null;
+  const grupo = input.grupo ? String(input.grupo).trim() : null;
   const activo = input.activo === 0 ? 0 : 1;
 
   if (!key) throw new Error("El campo key es obligatorio.");
   if (key.length > 120) throw new Error("El campo key es demasiado largo.");
 
-  // Valida unique
   const [dup] = await pool.query<any[]>(
     "SELECT id FROM permisos WHERE `key` = ? LIMIT 1",
     [key]
@@ -99,9 +120,12 @@ export async function createPermiso(input: {
 export async function getPermisoById(id: number) {
   const [rows] = await pool.query<any[]>(
     `SELECT id, \`key\`, descripcion, grupo, activo, creado_en
-     FROM permisos WHERE id = ? LIMIT 1`,
+     FROM permisos
+     WHERE id = ?
+     LIMIT 1`,
     [id]
   );
+
   return (rows?.[0] ?? null) as PermisoItem | null;
 }
 
@@ -109,16 +133,15 @@ export async function updatePermiso(
   id: number,
   input: { key: string; descripcion?: string | null; grupo?: string | null }
 ) {
-  const key = (input.key ?? "").trim();
-  const descripcion = (input.descripcion ?? null) ? String(input.descripcion).trim() : null;
-  const grupo = (input.grupo ?? null) ? String(input.grupo).trim() : null;
+  const key = String(input.key ?? "").trim();
+  const descripcion = input.descripcion ? String(input.descripcion).trim() : null;
+  const grupo = input.grupo ? String(input.grupo).trim() : null;
 
   if (!key) throw new Error("El campo key es obligatorio.");
 
   const current = await getPermisoById(id);
   if (!current) throw new Error("Permiso no encontrado.");
 
-  // Unique (excluyendo el mismo id)
   const [dup] = await pool.query<any[]>(
     "SELECT id FROM permisos WHERE `key` = ? AND id <> ? LIMIT 1",
     [key, id]
@@ -145,7 +168,6 @@ export async function togglePermiso(id: number, activo: number) {
   return await getPermisoById(id);
 }
 
-// "Borrado lógico": aquí solo lo dejamos inactivo
 export async function deletePermiso(id: number) {
   const current = await getPermisoById(id);
   if (!current) throw new Error("Permiso no encontrado.");

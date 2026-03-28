@@ -16,16 +16,11 @@ rolesRouter.get("/", async (req, res) => {
   try {
     const { search, page, limit, activo } = req.query as any;
 
-    const activoParsed =
-      activo === undefined || activo === null || activo === ""
-        ? null
-        : Number(activo);
-
     const data = await listRoles({
       search,
-      page: Number(page),
-      limit: Number(limit),
-      activo: activoParsed,
+      page,
+      limit,
+      activo,
     });
 
     return res.json({ success: true, ...data });
